@@ -4,7 +4,7 @@ import contextlib
 import io
 import unittest
 
-from config import DEFAULT_VFS_NAME, parse_args, print_config, vfs_name
+from config import parse_args, print_config
 
 
 class ParseArgsTest(unittest.TestCase):
@@ -48,20 +48,6 @@ class PrintConfigTest(unittest.TestCase):
         self.assertEqual(
             out.getvalue(),
             "[debug] vfs: a.zip\n[debug] script: (not set)\n")
-
-
-class VfsNameTest(unittest.TestCase):
-    """Проверки получения имени VFS из пути."""
-
-    def test_default_name(self):
-        """Без пути используется имя по умолчанию."""
-        self.assertEqual(vfs_name(None), DEFAULT_VFS_NAME)
-
-    def test_name_from_path(self):
-        """Имя VFS — имя файла без расширения."""
-        self.assertEqual(vfs_name("data/demo.zip"), "demo")
-        self.assertEqual(vfs_name("/tmp/archive"), "archive")
-        self.assertEqual(vfs_name("dir/deep/"), "deep")
 
 
 if __name__ == "__main__":

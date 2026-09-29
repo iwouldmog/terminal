@@ -1,0 +1,18 @@
+# Стартовый скрипт этапа 3: все команды этапов 1-3 и работа с VFS.
+# Внимание: vfs-init очищает физический ZIP-архив VFS.
+
+# Команды-заглушки ls и cd
+ls
+ls -l /home/user
+cd /etc
+
+# Ошибки: выполнение скрипта продолжается
+no-such-command
+exit abc
+exit 1 2
+vfs-init extra-argument
+
+# Замена VFS на VFS по умолчанию (пустую)
+vfs-init
+ls
+exit 0

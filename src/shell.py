@@ -3,10 +3,10 @@
 import sys
 
 from commands import COMMANDS
-from config import DEFAULT_VFS_NAME
 from errors import (STATUS_ERROR, STATUS_INTERRUPTED, STATUS_NOT_FOUND,
                     STATUS_OK, CommandError, ExitRequest)
 from line_parser import parse_line
+from vfs import VirtualFileSystem, path_str
 
 
 def read_script(path):
@@ -28,33 +28,45 @@ def read_script(path):
 class Shell:
     """Командная оболочка эмулятора."""
 
-    def __init__(self, vfs_name=DEFAULT_VFS_NAME, out=None, err=None,
-                 echo_input=False):
+    def __init__(self, vfs=None, out=None, err=None, echo_input=False):
         """Создать оболочку.
 
-        :param vfs_name: имя VFS, отображаемое в приглашении.
+        :param vfs: виртуальная файловая система (по умолчанию —
+            пустая VFS по умолчанию).
         :param out: поток стандартного вывода (по умолчанию stdout).
         :param err: поток вывода ошибок (по умолчанию stderr).
         :param echo_input: повторять введённую строку после
             приглашения (нужно, когда ввод идёт не с терминала).
         """
-        self.vfs_name = vfs_name
+        self.vfs = vfs if vfs is not None else VirtualFileSystem.empty()
+        self.cwd = []
         self.out = out if out is not None else sys.stdout
         self.err = err if err is not None else sys.stderr
         self.echo_input = echo_input
         self.status = STATUS_OK
 
     def prompt(self):
-        """Сформировать приглашение к вводу, содержащее имя VFS."""
-        return f"{self.vfs_name}$ "
+        """Сформировать приглашение: имя VFS и текущий каталог."""
+        return f"{self.vfs.name}:{path_str(self.cwd)}$ "
 
     def write(self, text=""):
         """Вывести строку в поток стандартного вывода."""
         print(text, file=self.out, flush=True)
 
+    def write_text(self, text):
+        """Вывести многострочный текст, завершив его переводом строки."""
+        if text:
+            self.write(text[:-1] if text.endswith("\n") else text)
+
     def error(self, text):
         """Вывести сообщение об ошибке в поток ошибок."""
         print(text, file=self.err, flush=True)
+
+    def show_motd(self):
+        """Вывести сообщение из файла ``motd`` в корне VFS, если он есть."""
+        text = self.vfs.motd()
+        if text is not None:
+            self.write_text(text)
 
     def execute(self, line):
         """Выполнить одну строку ввода.

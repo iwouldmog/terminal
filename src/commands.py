@@ -5,6 +5,7 @@
 """
 
 from errors import STATUS_OK, CommandError, ExitRequest
+from vfs import VfsError
 
 EXIT_CODE_MODULO = 256
 MAX_EXIT_ARGS = 1
@@ -53,8 +54,25 @@ def cmd_exit(shell, args):
     raise ExitRequest(code % EXIT_CODE_MODULO)
 
 
+def cmd_vfs_init(shell, args):
+    """Заменить текущую VFS на VFS по умолчанию: ``vfs-init``.
+
+    Содержимое VFS в памяти и её физическое представление (ZIP-архив)
+    очищаются, текущим каталогом становится корень.
+    """
+    if args:
+        raise CommandError("too many arguments")
+    try:
+        shell.vfs.reset()
+    except VfsError as exc:
+        raise CommandError(str(exc)) from None
+    shell.cwd = []
+    return STATUS_OK
+
+
 COMMANDS = {
     "ls": cmd_ls,
     "cd": cmd_cd,
     "exit": cmd_exit,
+    "vfs-init": cmd_vfs_init,
 }

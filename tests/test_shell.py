@@ -1,18 +1,14 @@
 """Тесты оболочки: выполнение команд и цикл REPL."""
 
-import io
 import os
 import tempfile
 import unittest
 from unittest import mock
 
 from errors import ExitRequest
+from helpers import make_shell, make_vfs
 from shell import Shell
-
-
-def make_shell():
-    """Создать оболочку с перехваченными потоками вывода."""
-    return Shell(out=io.StringIO(), err=io.StringIO())
+from vfs import VirtualFileSystem
 
 
 class ExecuteTest(unittest.TestCase):
@@ -24,8 +20,8 @@ class ExecuteTest(unittest.TestCase):
 
     def test_prompt_contains_vfs_name(self):
         """Приглашение содержит имя VFS."""
-        shell = Shell(vfs_name="demo")
-        self.assertIn("demo", shell.prompt())
+        shell = Shell(VirtualFileSystem.empty("demo"))
+        self.assertEqual(shell.prompt(), "demo:/$ ")
 
     def test_ls_stub(self):
         """Заглушка ls выводит своё имя и аргументы."""
@@ -80,6 +76,54 @@ class ExecuteTest(unittest.TestCase):
         self.assertIn("too many arguments", self.shell.err.getvalue())
 
 
+class VfsCommandsTest(unittest.TestCase):
+    """Работа оболочки с VFS: motd и команда vfs-init."""
+
+    def setUp(self):
+        """Создать архив VFS во временном каталоге."""
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        files = {"motd": "Hello!\n", "a/b/c.txt": "c"}
+        self.shell = make_shell(make_vfs(self.tmp.name, files))
+
+    def test_prompt_contains_vfs_name(self):
+        """Приглашение содержит имя архива VFS."""
+        self.assertEqual(self.shell.prompt(), "test:/$ ")
+
+    def test_motd(self):
+        """Сообщение motd выводится как есть."""
+        self.shell.show_motd()
+        self.assertEqual(self.shell.out.getvalue(), "Hello!\n")
+
+    def test_no_motd(self):
+        """Без файла motd ничего не выводится."""
+        shell = make_shell()
+        shell.show_motd()
+        self.assertEqual(shell.out.getvalue(), "")
+
+    def test_vfs_init(self):
+        """vfs-init очищает VFS в памяти и физический архив."""
+        self.shell.cwd = ["a"]
+        self.assertEqual(self.shell.execute("vfs-init"), 0)
+        self.assertEqual(self.shell.vfs.count(), (0, 0))
+        self.assertEqual(self.shell.cwd, [])
+        reloaded = VirtualFileSystem.from_zip(self.shell.vfs.source)
+        self.assertEqual(reloaded.count(), (0, 0))
+
+    def test_vfs_init_with_args(self):
+        """vfs-init не принимает аргументов."""
+        self.assertEqual(self.shell.execute("vfs-init now"), 1)
+        self.assertEqual(
+            self.shell.err.getvalue(), "vfs-init: too many arguments\n")
+        self.assertEqual(self.shell.vfs.count(), (2, 2))
+
+    def test_vfs_init_write_error(self):
+        """Ошибка записи архива сообщается пользователю."""
+        self.shell.vfs.source = self.tmp.name
+        self.assertEqual(self.shell.execute("vfs-init"), 1)
+        self.assertIn("vfs-init: cannot write", self.shell.err.getvalue())
+
+
 class ReplTest(unittest.TestCase):
     """Диалог с пользователем в цикле REPL."""
 
@@ -130,7 +174,7 @@ class ScriptTest(unittest.TestCase):
 
     def run_script(self, text, lines=()):
         """Запустить оболочку со скриптом и строками ввода."""
-        shell = Shell("demo", out=io.StringIO(), err=io.StringIO())
+        shell = make_shell(VirtualFileSystem.empty("demo"))
         inputs = list(lines) + [EOFError()]
         with mock.patch("builtins.input", side_effect=inputs):
             code = shell.run(self.write_script(text))
@@ -141,8 +185,8 @@ class ScriptTest(unittest.TestCase):
         shell, _ = self.run_script("ls -a\n\ncd x\n")
         self.assertEqual(
             shell.out.getvalue(),
-            "demo$ ls -a\nls: args=['-a']\n"
-            "demo$ cd x\ncd: args=['x']\n\n")
+            "demo:/$ ls -a\nls: args=['-a']\n"
+            "demo:/$ cd x\ncd: args=['x']\n\n")
 
     def test_errors_are_skipped(self):
         """Строки с ошибками пропускаются, скрипт продолжается."""
