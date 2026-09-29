@@ -6,12 +6,13 @@
 выводятся сразу, и команда продолжает работу.
 """
 
+import posixpath
 from operator import itemgetter
 
 from errors import (STATUS_ERROR, STATUS_OK, STATUS_TROUBLE, CommandError,
                     ExitRequest)
 from vfs import (CURRENT_DIR, IS_A_DIRECTORY, NOT_A_DIRECTORY, PARENT_DIR,
-                 SEPARATOR, VfsError, path_str)
+                 SEPARATOR, VfsError, VfsNotFoundError, path_str)
 
 EXIT_CODE_MODULO = 256
 MAX_EXIT_ARGS = 1
@@ -27,6 +28,11 @@ SHOW_ALL = "a"
 LONG_FORMAT = "l"
 CAT_OPTIONS = "n"
 NUMBER_LINES = "n"
+RM_OPTIONS = "rRf"
+RECURSIVE = frozenset("rR")
+FORCE = "f"
+TOUCH_OPTIONS = "c"
+NO_CREATE = "c"
 
 DIR_MODE = "drwxr-xr-x"
 FILE_MODE = "-rw-r--r--"
@@ -299,12 +305,104 @@ def cmd_tac(shell, args):
     return print_files(shell, "tac", paths, reverse_lines)
 
 
+def leave_removed_dir(shell, names):
+    """Перейти в родительский каталог, если текущий был удалён.
+
+    :param names: имена компонентов удалённого пути.
+    """
+    if shell.cwd[:len(names)] == names:
+        shell.cwd = names[:-1]
+
+
+def remove_path(shell, path, flags):
+    """Удалить один операнд команды ``rm``.
+
+    :raises CommandError: если путь удалить нельзя.
+    """
+    name = posixpath.basename(path.rstrip(SEPARATOR))
+    if name in (CURRENT_DIR, PARENT_DIR):
+        raise CommandError(
+            f"refusing to remove '.' or '..' directory: skipping '{path}'")
+    try:
+        node, names = shell.vfs.resolve(path, shell.cwd)
+    except VfsError as exc:
+        if FORCE in flags and isinstance(exc, VfsNotFoundError):
+            return
+        raise CommandError(f"cannot remove '{path}': {exc}") from None
+    if node.is_dir and not flags & RECURSIVE:
+        raise CommandError(f"cannot remove '{path}': {IS_A_DIRECTORY}")
+    if not names:
+        raise CommandError("it is dangerous to operate recursively on '/'")
+    shell.vfs.remove(names)
+    leave_removed_dir(shell, names)
+
+
+def cmd_rm(shell, args):
+    """Удалить файлы и каталоги: ``rm [-r] [-f] PATH...``.
+
+    ``-r`` (``-R``) — удалять каталоги вместе с содержимым;
+    ``-f`` — не сообщать об отсутствующих путях (другие ошибки,
+    например ``Not a directory``, сообщаются). Изменения
+    выполняются только в памяти. Если удалён текущий каталог (или
+    содержащий его), выполняется переход в родительский каталог
+    удалённого.
+    """
+    flags, paths = split_options(args, RM_OPTIONS)
+    if not paths and FORCE not in flags:
+        raise CommandError("missing operand")
+    status = STATUS_OK
+    for path in paths:
+        try:
+            remove_path(shell, path, flags)
+        except CommandError as exc:
+            shell.error(f"rm: {exc}")
+            status = STATUS_ERROR
+    return status
+
+
+def touch_path(shell, path, create):
+    """Обновить время изменения узла или создать пустой файл.
+
+    :param create: создавать ли отсутствующий файл.
+    :raises VfsError: если файл создать нельзя.
+    """
+    try:
+        node, _ = shell.vfs.resolve(path, shell.cwd)
+    except VfsError:
+        node = None
+    if node is not None:
+        node.touch()
+    elif create:
+        shell.vfs.create_file(path, shell.cwd)
+
+
+def cmd_touch(shell, args):
+    """Создать пустые файлы или обновить время: ``touch [-c] FILE...``.
+
+    ``-c`` — не создавать отсутствующие файлы. Изменения выполняются
+    только в памяти.
+    """
+    flags, paths = split_options(args, TOUCH_OPTIONS)
+    if not paths:
+        raise CommandError("missing file operand")
+    status = STATUS_OK
+    for path in paths:
+        try:
+            touch_path(shell, path, NO_CREATE not in flags)
+        except VfsError as exc:
+            shell.error(f"touch: cannot touch '{path}': {exc}")
+            status = STATUS_ERROR
+    return status
+
+
 COMMANDS = {
     "cat": cmd_cat,
     "cd": cmd_cd,
     "exit": cmd_exit,
     "ls": cmd_ls,
     "pwd": cmd_pwd,
+    "rm": cmd_rm,
     "tac": cmd_tac,
+    "touch": cmd_touch,
     "vfs-init": cmd_vfs_init,
 }
