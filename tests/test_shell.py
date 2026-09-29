@@ -23,17 +23,19 @@ class ExecuteTest(unittest.TestCase):
         shell = Shell(VirtualFileSystem.empty("demo"))
         self.assertEqual(shell.prompt(), "demo:/$ ")
 
-    def test_ls_stub(self):
-        """Заглушка ls выводит своё имя и аргументы."""
-        status = self.shell.execute("ls -l /home")
+    def test_command_output(self):
+        """Вывод команды попадает в поток стандартного вывода."""
+        status = self.shell.execute("pwd")
         self.assertEqual(status, 0)
-        self.assertEqual(
-            self.shell.out.getvalue(), "ls: args=['-l', '/home']\n")
+        self.assertEqual(self.shell.out.getvalue(), "/\n")
 
-    def test_cd_stub(self):
-        """Заглушка cd выводит своё имя и аргументы."""
-        self.shell.execute("cd")
-        self.assertEqual(self.shell.out.getvalue(), "cd: args=[]\n")
+    def test_command_error(self):
+        """Ошибка команды выводится в поток ошибок с её именем."""
+        status = self.shell.execute("cd /none")
+        self.assertEqual(status, 1)
+        self.assertEqual(
+            self.shell.err.getvalue(),
+            "cd: /none: No such file or directory\n")
 
     def test_empty_line_keeps_status(self):
         """Пустая строка не меняет код последней команды."""
@@ -136,9 +138,9 @@ class ReplTest(unittest.TestCase):
 
     def test_exit_stops_repl(self):
         """Команда exit прекращает цикл и задаёт код завершения."""
-        shell, code = self.run_with_input(["ls a", "exit 5", "cd b"])
+        shell, code = self.run_with_input(["pwd", "exit 5", "pwd"])
         self.assertEqual(code, 5)
-        self.assertEqual(shell.out.getvalue(), "ls: args=['a']\n")
+        self.assertEqual(shell.out.getvalue(), "/\n")
 
     def test_end_of_input(self):
         """Конец ввода завершает REPL с кодом последней команды."""
@@ -152,9 +154,9 @@ class ReplTest(unittest.TestCase):
 
     def test_errors_do_not_stop_repl(self):
         """После ошибки диалог продолжается."""
-        shell, code = self.run_with_input(["bad", "cd x", "exit 0"])
+        shell, code = self.run_with_input(["bad", "pwd", "exit 0"])
         self.assertEqual(code, 0)
-        self.assertEqual(shell.out.getvalue(), "cd: args=['x']\n")
+        self.assertEqual(shell.out.getvalue(), "/\n")
 
 
 class ScriptTest(unittest.TestCase):
@@ -182,16 +184,16 @@ class ScriptTest(unittest.TestCase):
 
     def test_input_and_output_are_shown(self):
         """Выводится приглашение с командой и результат команды."""
-        shell, _ = self.run_script("ls -a\n\ncd x\n")
+        shell, _ = self.run_script("ls -a\n\npwd\n")
         self.assertEqual(
             shell.out.getvalue(),
-            "demo:/$ ls -a\nls: args=['-a']\n"
-            "demo:/$ cd x\ncd: args=['x']\n\n")
+            "demo:/$ ls -a\n.  ..\n"
+            "demo:/$ pwd\n/\n\n")
 
     def test_errors_are_skipped(self):
         """Строки с ошибками пропускаются, скрипт продолжается."""
-        shell, _ = self.run_script("bad\nexit x\nls\n")
-        self.assertIn("ls: args=[]", shell.out.getvalue())
+        shell, _ = self.run_script("bad\nexit x\npwd\n")
+        self.assertIn("demo:/$ pwd\n/\n", shell.out.getvalue())
         self.assertEqual(
             shell.err.getvalue(),
             "bad: command not found\n"
@@ -199,13 +201,13 @@ class ScriptTest(unittest.TestCase):
 
     def test_exit_in_script(self):
         """Команда exit в скрипте завершает эмулятор."""
-        shell, code = self.run_script("exit 4\nls\n")
+        shell, code = self.run_script("exit 4\npwd\n")
         self.assertEqual(code, 4)
-        self.assertNotIn("ls:", shell.out.getvalue())
+        self.assertNotIn("pwd", shell.out.getvalue())
 
     def test_repl_after_script(self):
         """После скрипта продолжается диалог с пользователем."""
-        _, code = self.run_script("ls\n", ["exit 9"])
+        _, code = self.run_script("pwd\n", ["exit 9"])
         self.assertEqual(code, 9)
 
     def test_missing_script(self):
