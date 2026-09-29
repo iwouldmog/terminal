@@ -1,0 +1,13 @@
+#!/bin/sh
+# Этап 2: выполнение стартовых скриптов с разными VFS.
+. "$(dirname "$0")/common.sh"
+
+title "Скрипт с ошибками выполняется полностью, затем диалог"
+printf 'exit 0\n' | emulate --vfs vfs/minimal.zip \
+    --script startup/stage2.txt
+
+title "Команда exit в скрипте завершает эмулятор с кодом 42"
+emulate --vfs vfs/deep.zip --script startup/stage2_exit.txt </dev/null
+
+title "Скрипт без exit: конец ввода завершает эмулятор"
+emulate --vfs vfs/multi.zip --script startup/stage2.txt </dev/null

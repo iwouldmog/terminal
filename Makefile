@@ -1,12 +1,15 @@
 PYTHON ?= python3
 
-.PHONY: run test clean
+.PHONY: run test demo clean
 
 run:
-	$(PYTHON) src/main.py
+	$(PYTHON) src/main.py $(ARGS)
 
 test:
 	PYTHONPATH=src $(PYTHON) -m unittest discover -s tests -v
+
+demo:
+	for script in scripts/test_*.sh; do sh "$$script"; done
 
 clean:
 	rm -rf build

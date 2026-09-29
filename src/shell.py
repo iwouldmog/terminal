@@ -1,13 +1,28 @@
-"""Интерпретатор эмулятора: цикл REPL и выполнение команд."""
+"""Интерпретатор эмулятора: REPL и выполнение стартовых скриптов."""
 
 import sys
 
 from commands import COMMANDS
+from config import DEFAULT_VFS_NAME
 from errors import (STATUS_ERROR, STATUS_INTERRUPTED, STATUS_NOT_FOUND,
                     STATUS_OK, CommandError, ExitRequest)
 from line_parser import parse_line
 
-DEFAULT_VFS_NAME = "vfs"
+
+def read_script(path):
+    """Прочитать строки стартового скрипта из файла ОС.
+
+    :param path: путь к скрипту.
+    :return: список строк скрипта.
+    :raises CommandError: если файл не удалось прочитать.
+    """
+    try:
+        with open(path, encoding="utf-8") as script:
+            return script.read().splitlines()
+    except UnicodeDecodeError:
+        raise CommandError("not a UTF-8 text file") from None
+    except OSError as exc:
+        raise CommandError(exc.strerror) from None
 
 
 class Shell:
@@ -87,12 +102,35 @@ class Shell:
                 return
             self.execute(line)
 
-    def run(self):
-        """Запустить диалог с пользователем.
+    def run_script(self, path):
+        """Выполнить стартовый скрипт, имитируя диалог с пользователем.
 
+        Каждая непустая строка выводится после приглашения и
+        выполняется. Строки с ошибками пропускаются.
+
+        :param path: путь к скрипту в файловой системе ОС.
+        :return: ``False``, если скрипт не удалось прочитать.
+        """
+        try:
+            lines = read_script(path)
+        except CommandError as exc:
+            self.error(f"emulator: cannot read script '{path}': {exc}")
+            return False
+        for line in lines:
+            if line.strip():
+                self.write(self.prompt() + line)
+                self.execute(line)
+        return True
+
+    def run(self, script=None):
+        """Выполнить стартовый скрипт (если задан), затем диалог.
+
+        :param script: путь к стартовому скрипту или ``None``.
         :return: код завершения эмулятора.
         """
         try:
+            if script is not None and not self.run_script(script):
+                return STATUS_ERROR
             self.repl()
         except ExitRequest as request:
             return request.code
