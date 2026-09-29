@@ -1,6 +1,8 @@
 """Тесты оболочки: выполнение команд и цикл REPL."""
 
 import io
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -109,6 +111,74 @@ class ReplTest(unittest.TestCase):
         shell, code = self.run_with_input(["bad", "cd x", "exit 0"])
         self.assertEqual(code, 0)
         self.assertEqual(shell.out.getvalue(), "cd: args=['x']\n")
+
+
+class ScriptTest(unittest.TestCase):
+    """Выполнение стартового скрипта."""
+
+    def setUp(self):
+        """Создать временный каталог для скриптов."""
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def write_script(self, text):
+        """Сохранить текст скрипта во временный файл."""
+        path = os.path.join(self.tmp.name, "script.txt")
+        with open(path, "w", encoding="utf-8") as script:
+            script.write(text)
+        return path
+
+    def run_script(self, text, lines=()):
+        """Запустить оболочку со скриптом и строками ввода."""
+        shell = Shell("demo", out=io.StringIO(), err=io.StringIO())
+        inputs = list(lines) + [EOFError()]
+        with mock.patch("builtins.input", side_effect=inputs):
+            code = shell.run(self.write_script(text))
+        return shell, code
+
+    def test_input_and_output_are_shown(self):
+        """Выводится приглашение с командой и результат команды."""
+        shell, _ = self.run_script("ls -a\n\ncd x\n")
+        self.assertEqual(
+            shell.out.getvalue(),
+            "demo$ ls -a\nls: args=['-a']\n"
+            "demo$ cd x\ncd: args=['x']\n\n")
+
+    def test_errors_are_skipped(self):
+        """Строки с ошибками пропускаются, скрипт продолжается."""
+        shell, _ = self.run_script("bad\nexit x\nls\n")
+        self.assertIn("ls: args=[]", shell.out.getvalue())
+        self.assertEqual(
+            shell.err.getvalue(),
+            "bad: command not found\n"
+            "exit: x: numeric argument required\n")
+
+    def test_exit_in_script(self):
+        """Команда exit в скрипте завершает эмулятор."""
+        shell, code = self.run_script("exit 4\nls\n")
+        self.assertEqual(code, 4)
+        self.assertNotIn("ls:", shell.out.getvalue())
+
+    def test_repl_after_script(self):
+        """После скрипта продолжается диалог с пользователем."""
+        _, code = self.run_script("ls\n", ["exit 9"])
+        self.assertEqual(code, 9)
+
+    def test_missing_script(self):
+        """Отсутствующий скрипт — ошибка с кодом 1."""
+        shell = make_shell()
+        code = shell.run(os.path.join(self.tmp.name, "missing.txt"))
+        self.assertEqual(code, 1)
+        self.assertIn("No such file or directory", shell.err.getvalue())
+
+    def test_binary_script(self):
+        """Скрипт не в кодировке UTF-8 — ошибка с кодом 1."""
+        path = os.path.join(self.tmp.name, "binary.txt")
+        with open(path, "wb") as script:
+            script.write(b"\xff\xfe")
+        shell = make_shell()
+        self.assertEqual(shell.run(path), 1)
+        self.assertIn("not a UTF-8 text file", shell.err.getvalue())
 
 
 if __name__ == "__main__":
