@@ -1,0 +1,59 @@
+# Стартовый скрипт этапа 4: команды ls, cd, pwd, cat, tac.
+# Рассчитан на VFS build/deep.zip (собирается из каталога vfs/deep).
+
+# pwd и cd: абсолютные и относительные пути, "." и ".."
+pwd
+cd /home/user/docs
+pwd
+cd drafts
+pwd
+cd ../../projects/./emulator
+pwd
+cd ..
+pwd
+cd /..
+pwd
+cd home/user
+cd
+pwd
+
+# ls: текущий каталог, пути, опции, несколько операндов
+ls
+ls /home/user
+ls -a /home/user
+ls -l /etc
+ls -la home/user/docs
+ls etc/hostname motd
+ls /var/log /etc
+cd /home/user/docs
+ls ..
+ls -- drafts
+cd /
+
+# cat: один и несколько файлов, нумерация, двоичный файл (base64)
+cat motd
+cat /etc/hostname /etc/network/interfaces
+cat -n home/user/docs/report.txt home/user/docs/drafts/plan.txt
+cat bin/hello
+
+# tac: строки в обратном порядке, несколько файлов
+tac var/log/app/app.log
+tac /home/user/docs/drafts/plan.txt etc/hostname
+
+# Ошибки: выполнение скрипта продолжается
+cd /nonexistent
+cd /etc/hostname
+cd /etc /var
+pwd extra
+ls /nonexistent
+ls /etc/hostname/
+ls -x
+ls --all
+cat
+cat /home
+cat missing.txt /etc/hostname
+cat -z motd
+tac
+tac /var/log
+tac nothing.txt
+exit 0

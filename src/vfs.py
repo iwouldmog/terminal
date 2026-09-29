@@ -18,6 +18,9 @@ CURRENT_DIR = "."
 PARENT_DIR = ".."
 DEFAULT_NAME = "vfs"
 MOTD_NAME = "motd"
+NO_SUCH_FILE = "No such file or directory"
+NOT_A_DIRECTORY = "Not a directory"
+IS_A_DIRECTORY = "Is a directory"
 TEXT_ENCODING = "utf-8"
 DOS_EPOCH = datetime(1980, 1, 1)
 LOAD_ERRORS = (OSError, EOFError, RuntimeError, NotImplementedError,
@@ -153,6 +156,31 @@ def add_entry(root, info, data):
     parent.children[name] = Node.file(data, mtime)
 
 
+def step(nodes, names, part):
+    """Выполнить один шаг разрешения пути.
+
+    :param nodes: цепочка узлов от корня (изменяется).
+    :param names: имена компонентов пути (изменяются).
+    :param part: очередной компонент пути.
+    :raises VfsError: если компонент не существует или путь
+        проходит через файл.
+    """
+    if not nodes[-1].is_dir:
+        raise VfsError(NOT_A_DIRECTORY)
+    if part in ("", CURRENT_DIR):
+        return
+    if part == PARENT_DIR:
+        if names:
+            names.pop()
+            nodes.pop()
+        return
+    child = nodes[-1].children.get(part)
+    if child is None:
+        raise VfsError(NO_SUCH_FILE)
+    nodes.append(child)
+    names.append(part)
+
+
 def load_tree(raw):
     """Построить дерево узлов по байтам ZIP-архива, не распаковывая."""
     root = Node.directory()
@@ -212,6 +240,34 @@ class VirtualFileSystem:
                     f"cannot write '{self.source}': {error_reason(exc)}"
                 ) from None
         self.root = Node.directory()
+
+    def chain(self, names):
+        """Вернуть цепочку узлов от корня до пути ``names``.
+
+        :param names: имена компонентов абсолютного пути.
+        :raises VfsError: если путь не существует.
+        """
+        nodes = [self.root]
+        for name in names:
+            step(nodes, [], name)
+        return nodes
+
+    def resolve(self, path, cwd):
+        """Найти узел по пути относительно текущего каталога.
+
+        Поддерживаются абсолютные и относительные пути, ``.`` и ``..``
+        (``..`` в корне указывает на сам корень).
+
+        :param path: путь в VFS.
+        :param cwd: имена компонентов текущего каталога.
+        :return: пара ``(узел, имена компонентов абсолютного пути)``.
+        :raises VfsError: если путь не существует.
+        """
+        names = [] if path.startswith(SEPARATOR) else list(cwd)
+        nodes = self.chain(names)
+        for part in path.split(SEPARATOR):
+            step(nodes, names, part)
+        return nodes[-1], names
 
     def count(self):
         """Подсчитать каталоги (без корня) и файлы VFS."""
