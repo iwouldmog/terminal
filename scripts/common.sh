@@ -16,3 +16,8 @@ emulate() {
     ./run.sh "$@" 2>&1
     echo "[exit code: $?]"
 }
+
+# Собрать ZIP-архив VFS build/$1.zip из каталога vfs/$1.
+build_vfs() {
+    "${PYTHON:-python3}" src/mkvfs.py "vfs/$1" "build/$1.zip" >/dev/null
+}

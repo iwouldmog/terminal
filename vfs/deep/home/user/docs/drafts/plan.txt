@@ -1,0 +1,4 @@
+step 1: design
+step 2: implement
+step 3: test
+step 4: release
