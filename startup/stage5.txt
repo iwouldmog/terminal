@@ -1,0 +1,58 @@
+# Стартовый скрипт этапа 5: команды rm и touch.
+# Рассчитан на VFS build/deep.zip (собирается из каталога vfs/deep).
+# Изменения выполняются только в памяти, ZIP-архив не меняется.
+
+# touch: создание пустых файлов по относительным и абсолютным путям
+cd /home/user
+ls
+touch new.txt /tmp.txt docs/drafts/idea.txt
+ls
+ls /
+ls -l docs/drafts
+cat new.txt
+
+# touch: обновление времени изменения файла и каталога
+ls -l /etc
+touch /etc/hostname /etc/network
+ls -l /etc
+
+# touch -c: отсутствующие файлы не создаются
+touch -c ghost.txt
+ls
+
+# rm: удаление файлов
+rm new.txt
+rm /tmp.txt docs/drafts/idea.txt
+ls
+ls /
+
+# rm -r: рекурсивное удаление каталога
+ls docs
+rm -r docs/drafts
+ls docs
+
+# rm -f: отсутствующие пути не считаются ошибкой
+rm -f nothing.txt
+rm -f
+
+# Удаление каталога, содержащего текущий: переход в его родителя
+cd /var/log/app
+rm -R /var/log
+pwd
+ls /var
+
+# Ошибки: выполнение скрипта продолжается
+touch
+touch /nonexistent/file.txt
+touch /etc/hostname/file.txt
+touch newdir/
+touch -x file.txt
+rm
+rm missing.txt
+rm /home
+rm -r /
+rm .
+rm -r ..
+rm -rf /etc/hostname/
+rm -z motd
+exit 0

@@ -9,6 +9,7 @@
 import base64
 import io
 import os
+import posixpath
 import zipfile
 import zlib
 from datetime import datetime
@@ -29,6 +30,10 @@ LOAD_ERRORS = (OSError, EOFError, RuntimeError, NotImplementedError,
 
 class VfsError(Exception):
     """Ошибка работы с виртуальной файловой системой."""
+
+
+class VfsNotFoundError(VfsError):
+    """Путь в виртуальной файловой системе не существует."""
 
 
 class Node:
@@ -64,6 +69,10 @@ class Node:
     def text(self):
         """Содержимое файла как текст; двоичные данные — в base64."""
         return decode_content(self.data)
+
+    def touch(self):
+        """Обновить время изменения узла текущим временем."""
+        self.mtime = datetime.now()
 
 
 def decode_content(data):
@@ -176,7 +185,7 @@ def step(nodes, names, part):
         return
     child = nodes[-1].children.get(part)
     if child is None:
-        raise VfsError(NO_SUCH_FILE)
+        raise VfsNotFoundError(NO_SUCH_FILE)
     nodes.append(child)
     names.append(part)
 
@@ -268,6 +277,34 @@ class VirtualFileSystem:
         for part in path.split(SEPARATOR):
             step(nodes, names, part)
         return nodes[-1], names
+
+    def create_file(self, path, cwd):
+        """Создать пустой файл по пути ``path`` (только в памяти).
+
+        :param path: путь к новому файлу.
+        :param cwd: имена компонентов текущего каталога.
+        :raises VfsError: если родительский каталог не существует.
+        """
+        if path.endswith(SEPARATOR):
+            raise VfsNotFoundError(NO_SUCH_FILE)
+        head, name = posixpath.split(path)
+        parent, _ = self.resolve(head or CURRENT_DIR, cwd)
+        if not parent.is_dir:
+            raise VfsError(NOT_A_DIRECTORY)
+        parent.children[name] = Node.file()
+        parent.touch()
+
+    def remove(self, names):
+        """Удалить узел вместе с содержимым (только в памяти).
+
+        :param names: имена компонентов абсолютного пути (не корень).
+        :raises VfsError: если путь не существует.
+        """
+        parent = self.chain(names[:-1])[-1]
+        if names[-1] not in parent.children:
+            raise VfsNotFoundError(NO_SUCH_FILE)
+        del parent.children[names[-1]]
+        parent.touch()
 
     def count(self):
         """Подсчитать каталоги (без корня) и файлы VFS."""
