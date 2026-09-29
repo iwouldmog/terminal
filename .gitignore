@@ -1,0 +1,16 @@
+# Служебные файлы Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Артефакты сборки (в том числе собранные ZIP-архивы VFS)
+build/
+dist/
+*.zip
+
+# Настройки редакторов и ОС
+.idea/
+.vscode/
+*.swp
+.DS_Store
