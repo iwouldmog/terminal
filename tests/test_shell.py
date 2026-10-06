@@ -1,12 +1,12 @@
 """Тесты оболочки: выполнение команд и цикл REPL."""
 
-import os
-import tempfile
 import unittest
+from functools import cached_property
 from unittest import mock
 
+from helpers import TempDirTestCase, make_shell, make_vfs
+
 from errors import ExitRequest
-from helpers import make_shell, make_vfs
 from shell import Shell
 from vfs import VirtualFileSystem
 
@@ -14,9 +14,10 @@ from vfs import VirtualFileSystem
 class ExecuteTest(unittest.TestCase):
     """Выполнение отдельных команд."""
 
-    def setUp(self):
-        """Подготовить новую оболочку для каждого теста."""
-        self.shell = make_shell()
+    @cached_property
+    def shell(self):
+        """Новая оболочка (создаётся при первом обращении в тесте)."""
+        return make_shell()
 
     def test_prompt_contains_vfs_name(self):
         """Приглашение содержит имя VFS."""
@@ -34,8 +35,8 @@ class ExecuteTest(unittest.TestCase):
         status = self.shell.execute("cd /none")
         self.assertEqual(status, 1)
         self.assertEqual(
-            self.shell.err.getvalue(),
-            "cd: /none: No such file or directory\n")
+            self.shell.err.getvalue(), "cd: /none: No such file or directory\n"
+        )
 
     def test_empty_line_keeps_status(self):
         """Пустая строка не меняет код последней команды."""
@@ -46,8 +47,7 @@ class ExecuteTest(unittest.TestCase):
         """Неизвестная команда даёт ошибку и код 127."""
         status = self.shell.execute("foo bar")
         self.assertEqual(status, 127)
-        self.assertEqual(
-            self.shell.err.getvalue(), "foo: command not found\n")
+        self.assertEqual(self.shell.err.getvalue(), "foo: command not found\n")
 
     def test_exit_without_args_uses_last_status(self):
         """exit без аргументов завершает с кодом последней команды."""
@@ -68,8 +68,8 @@ class ExecuteTest(unittest.TestCase):
         status = self.shell.execute("exit abc")
         self.assertEqual(status, 1)
         self.assertEqual(
-            self.shell.err.getvalue(),
-            "exit: abc: numeric argument required\n")
+            self.shell.err.getvalue(), "exit: abc: numeric argument required\n"
+        )
 
     def test_exit_too_many_args(self):
         """Лишние аргументы exit — ошибка, работа продолжается."""
@@ -78,15 +78,14 @@ class ExecuteTest(unittest.TestCase):
         self.assertIn("too many arguments", self.shell.err.getvalue())
 
 
-class VfsCommandsTest(unittest.TestCase):
+class VfsCommandsTest(TempDirTestCase):
     """Работа оболочки с VFS: motd и команда vfs-init."""
 
-    def setUp(self):
-        """Создать архив VFS во временном каталоге."""
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
+    @cached_property
+    def shell(self):
+        """Оболочка с VFS из архива во временном каталоге."""
         files = {"motd": "Hello!\n", "a/b/c.txt": "c"}
-        self.shell = make_shell(make_vfs(self.tmp.name, files))
+        return make_shell(make_vfs(self.tmp_dir, files))
 
     def test_prompt_contains_vfs_name(self):
         """Приглашение содержит имя архива VFS."""
@@ -121,7 +120,7 @@ class VfsCommandsTest(unittest.TestCase):
 
     def test_vfs_init_write_error(self):
         """Ошибка записи архива сообщается пользователю."""
-        self.shell.vfs.source = self.tmp.name
+        self.shell.vfs.source = self.tmp_dir
         self.assertEqual(self.shell.execute("vfs-init"), 1)
         self.assertIn("vfs-init: cannot write", self.shell.err.getvalue())
 
@@ -159,17 +158,12 @@ class ReplTest(unittest.TestCase):
         self.assertEqual(shell.out.getvalue(), "/\n")
 
 
-class ScriptTest(unittest.TestCase):
+class ScriptTest(TempDirTestCase):
     """Выполнение стартового скрипта."""
-
-    def setUp(self):
-        """Создать временный каталог для скриптов."""
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
 
     def write_script(self, text):
         """Сохранить текст скрипта во временный файл."""
-        path = os.path.join(self.tmp.name, "script.txt")
+        path = self.tmp_path("script.txt")
         with open(path, "w", encoding="utf-8") as script:
             script.write(text)
         return path
@@ -186,9 +180,8 @@ class ScriptTest(unittest.TestCase):
         """Выводится приглашение с командой и результат команды."""
         shell, _ = self.run_script("ls -a\n\npwd\n")
         self.assertEqual(
-            shell.out.getvalue(),
-            "demo:/$ ls -a\n.  ..\n"
-            "demo:/$ pwd\n/\n\n")
+            shell.out.getvalue(), "demo:/$ ls -a\n.  ..\ndemo:/$ pwd\n/\n\n"
+        )
 
     def test_errors_are_skipped(self):
         """Строки с ошибками пропускаются, скрипт продолжается."""
@@ -196,8 +189,8 @@ class ScriptTest(unittest.TestCase):
         self.assertIn("demo:/$ pwd\n/\n", shell.out.getvalue())
         self.assertEqual(
             shell.err.getvalue(),
-            "bad: command not found\n"
-            "exit: x: numeric argument required\n")
+            "bad: command not found\nexit: x: numeric argument required\n",
+        )
 
     def test_exit_in_script(self):
         """Команда exit в скрипте завершает эмулятор."""
@@ -213,13 +206,13 @@ class ScriptTest(unittest.TestCase):
     def test_missing_script(self):
         """Отсутствующий скрипт — ошибка с кодом 1."""
         shell = make_shell()
-        code = shell.run(os.path.join(self.tmp.name, "missing.txt"))
+        code = shell.run(self.tmp_path("missing.txt"))
         self.assertEqual(code, 1)
         self.assertIn("No such file or directory", shell.err.getvalue())
 
     def test_binary_script(self):
         """Скрипт не в кодировке UTF-8 — ошибка с кодом 1."""
-        path = os.path.join(self.tmp.name, "binary.txt")
+        path = self.tmp_path("binary.txt")
         with open(path, "wb") as script:
             script.write(b"\xff\xfe")
         shell = make_shell()

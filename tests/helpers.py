@@ -1,8 +1,11 @@
-"""Вспомогательные функции для тестов."""
+"""Вспомогательные функции и базовый класс для тестов."""
 
 import io
 import os
+import tempfile
+import unittest
 import zipfile
+from functools import cached_property
 
 from shell import Shell
 from vfs import VirtualFileSystem
@@ -32,3 +35,23 @@ def make_vfs(tmp_dir, files, dirs=(), name="test.zip"):
 def make_shell(vfs=None):
     """Создать оболочку с перехваченными потоками вывода."""
     return Shell(vfs, out=io.StringIO(), err=io.StringIO())
+
+
+class TempDirTestCase(unittest.TestCase):
+    """Базовый класс тестов с временным каталогом.
+
+    Каталог создаётся при первом обращении к :attr:`tmp_dir` и
+    удаляется после теста. ``unittest`` создаёт новый объект класса
+    для каждого теста, поэтому у каждого теста свой каталог.
+    """
+
+    @cached_property
+    def tmp_dir(self):
+        """Путь к временному каталогу теста."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        return tmp.name
+
+    def tmp_path(self, name):
+        """Путь к файлу ``name`` во временном каталоге."""
+        return os.path.join(self.tmp_dir, name)

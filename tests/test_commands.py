@@ -1,11 +1,12 @@
 """Тесты команд ls, cd, pwd, cat, tac и разбора опций."""
 
-import tempfile
 import unittest
+from functools import cached_property
+
+from helpers import TempDirTestCase, make_shell, make_vfs
 
 from commands import split_options
 from errors import CommandError
-from helpers import make_shell, make_vfs
 
 FILES = {
     "motd": "Hello\n",
@@ -18,14 +19,13 @@ FILES = {
 }
 
 
-class CommandTestCase(unittest.TestCase):
+class CommandTestCase(TempDirTestCase):
     """Базовый класс: оболочка с тестовой VFS."""
 
-    def setUp(self):
-        """Создать оболочку с VFS из словаря ``FILES``."""
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.shell = make_shell(make_vfs(tmp.name, FILES))
+    @cached_property
+    def shell(self):
+        """Оболочка с VFS из ``FILES``, своя для каждого теста."""
+        return make_shell(make_vfs(self.tmp_dir, FILES))
 
     def run_cmd(self, line):
         """Выполнить строку и вернуть ``(код, stdout, stderr)``."""
@@ -113,8 +113,7 @@ class LsTest(CommandTestCase):
 
     def test_current_dir(self):
         """Без аргументов выводится текущий каталог по алфавиту."""
-        self.assertEqual(
-            self.run_cmd("ls"), (0, "bin  etc  home  motd\n", ""))
+        self.assertEqual(self.run_cmd("ls"), (0, "bin  etc  home  motd\n", ""))
 
     def test_hidden_files(self):
         """Скрытые файлы видны только с ``-a``."""
@@ -138,8 +137,9 @@ class LsTest(CommandTestCase):
         """Файлы выводятся первыми, каталоги — с заголовками."""
         output = self.run_cmd("ls /home/user/docs motd /etc")[1]
         self.assertEqual(
-            output, "motd\n\n/etc:\nhostname\n\n/home/user/docs:\n"
-            "a.txt  b.txt\n")
+            output,
+            "motd\n\n/etc:\nhostname\n\n/home/user/docs:\na.txt  b.txt\n",
+        )
 
     def test_empty_dir(self):
         """Пустой каталог ничего не выводит."""
@@ -164,14 +164,16 @@ class CatTacTest(CommandTestCase):
         self.run_cmd("cd /home/user/docs")
         self.assertEqual(
             self.run_cmd("cat a.txt b.txt /motd"),
-            (0, "1\n2\n3\nx\ny\nHello\n", ""))
+            (0, "1\n2\n3\nx\ny\nHello\n", ""),
+        )
 
     def test_cat_numbering(self):
         """``-n`` нумерует строки сквозным образом."""
         self.run_cmd("cd /home/user/docs")
         self.assertEqual(
             self.run_cmd("cat -n a.txt b.txt")[1],
-            "     1\t1\n     2\t2\n     3\t3\n     4\tx\n     5\ty\n")
+            "     1\t1\n     2\t2\n     3\t3\n     4\tx\n     5\ty\n",
+        )
 
     def test_cat_empty_and_binary(self):
         """Пустой файл ничего не выводит, двоичный — выводится в base64."""
@@ -183,8 +185,10 @@ class CatTacTest(CommandTestCase):
         status, out, err = self.run_cmd("cat none /etc /motd")
         self.assertEqual((status, out), (1, "Hello\n"))
         self.assertEqual(
-            err, "cat: none: No such file or directory\n"
-            "cat: /etc: Is a directory\n")
+            err,
+            "cat: none: No such file or directory\n"
+            "cat: /etc: Is a directory\n",
+        )
         self.assertEqual(
             self.run_cmd("cat"), (1, "", "cat: missing file operand\n"))
 

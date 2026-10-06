@@ -1,9 +1,10 @@
 """Тесты команд rm и touch, изменяющих VFS только в памяти."""
 
-import tempfile
 import unittest
+from functools import cached_property
 
-from helpers import make_shell, make_vfs
+from helpers import TempDirTestCase, make_shell, make_vfs
+
 from vfs import DOS_EPOCH, VfsNotFoundError
 
 FILES = {
@@ -14,16 +15,21 @@ FILES = {
 }
 
 
-class ModifyTestCase(unittest.TestCase):
+class ModifyTestCase(TempDirTestCase):
     """Базовый класс: оболочка с тестовой VFS."""
 
-    def setUp(self):
-        """Создать оболочку с VFS из словаря ``FILES``."""
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.shell = make_shell(make_vfs(tmp.name, FILES))
-        with open(self.shell.vfs.source, "rb") as archive:
+    @cached_property
+    def shell(self):
+        """Оболочка с VFS из словаря ``FILES``.
+
+        Создаётся при первом обращении. Содержимое архива сохраняется
+        сразу, до выполнения команд, чтобы затем проверить, что
+        команды его не изменили.
+        """
+        shell = make_shell(make_vfs(self.tmp_dir, FILES))
+        with open(shell.vfs.source, "rb") as archive:
             self.archive = archive.read()
+        return shell
 
     def run_cmd(self, line):
         """Выполнить строку и вернуть ``(код, stderr)``."""
@@ -53,8 +59,7 @@ class TouchTest(ModifyTestCase):
     def test_create_files(self):
         """Создаются пустые файлы по относительным и абсолютным путям."""
         self.run_cmd("cd /home/user")
-        self.assertEqual(self.run_cmd("touch new.txt /top docs/sub/c"),
-                         (0, ""))
+        self.assertEqual(self.run_cmd("touch new.txt /top docs/sub/c"), (0, ""))
         for path in ("/home/user/new.txt", "/top", "/home/user/docs/sub/c"):
             node, _ = self.shell.vfs.resolve(path, [])
             self.assertEqual(node.data, b"")
@@ -78,8 +83,10 @@ class TouchTest(ModifyTestCase):
         status, err = self.run_cmd("touch /none/x /etc/hostname/x ok")
         self.assertEqual(status, 1)
         self.assertEqual(
-            err, "touch: cannot touch '/none/x': No such file or directory\n"
-            "touch: cannot touch '/etc/hostname/x': Not a directory\n")
+            err,
+            "touch: cannot touch '/none/x': No such file or directory\n"
+            "touch: cannot touch '/etc/hostname/x': Not a directory\n",
+        )
         self.assertTrue(self.exists("/ok"))
 
     def test_usage_errors(self):
@@ -105,7 +112,8 @@ class RmTest(ModifyTestCase):
         """Каталог удаляется только с ``-r`` или ``-R``."""
         self.assertEqual(
             self.run_cmd("rm /etc"),
-            (1, "rm: cannot remove '/etc': Is a directory\n"))
+            (1, "rm: cannot remove '/etc': Is a directory\n"),
+        )
         self.assertEqual(self.run_cmd("rm -r /etc"), (0, ""))
         self.assertEqual(self.run_cmd("rm -R /home/user/docs/sub"), (0, ""))
         self.assertFalse(self.exists("/etc"))
@@ -117,7 +125,8 @@ class RmTest(ModifyTestCase):
         self.assertEqual(self.run_cmd("rm -f"), (0, ""))
         self.assertEqual(
             self.run_cmd("rm -f /etc/hostname/"),
-            (1, "rm: cannot remove '/etc/hostname/': Not a directory\n"))
+            (1, "rm: cannot remove '/etc/hostname/': Not a directory\n"),
+        )
 
     def test_remove_current_dir(self):
         """При удалении текущего каталога — переход в родителя."""
@@ -131,9 +140,9 @@ class RmTest(ModifyTestCase):
             "rm -r /": "rm: it is dangerous to operate recursively on '/'\n",
             "rm /": "rm: cannot remove '/': Is a directory\n",
             "rm -r .": "rm: refusing to remove '.' or '..' directory: "
-                       "skipping '.'\n",
+            "skipping '.'\n",
             "rm -r etc/..": "rm: refusing to remove '.' or '..' "
-                            "directory: skipping 'etc/..'\n",
+            "directory: skipping 'etc/..'\n",
         }
         for line, message in cases.items():
             with self.subTest(line=line):
